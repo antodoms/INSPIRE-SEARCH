@@ -18,7 +18,8 @@ loop do
         puts "Please choose from the following options:"
         puts "1. Clone from Git repository"
         puts "2. Start Reindexing Process"
-        puts "3. Exit"
+        puts "3. Index the data to Elasticsearch"
+        puts "4. Exit"
 
 
 
@@ -37,8 +38,52 @@ loop do
         		Dir.chdir HOME+'/INSPIRE-SEARCH/db'
             puts '........ Deleting Old Data from Index........'
             system 'curl -XDELETE http://localhost:9200/estates'
+            system 'curl -XDELETE http://localhost:9200/estate'
 
             puts '........ Setting up the Estate ElasticSearch Index Configuration......'
+
+            client.indices.create index: 'estate', body: {
+						  settings: {
+                          analysis: {
+                            filter: {
+                              qgram_filter: {
+                                            type: "ngram",
+                                            min_gram: 2,
+                                            max_gram: 3
+                                        }
+                            },
+                            analyzer: {
+                                        index_ngram: {
+                                            type: "custom",
+                                            tokenizer: "standard",
+                                            filter: "qgram_filter"
+                                        },
+                                        search_ngram: {
+                                        		type: "custom",
+                                            tokenizer: "standard",
+                                            filter: "qgram_filter"
+                                        }
+                                    }
+                          }
+                          
+                        },
+                        mappings: {
+                            property: {
+                              properties: {
+                                    location: {
+                                      type: "geo_shape",
+                                      tree: "quadtree",
+                                       precision: "1km",
+                                       points_only: true
+                                    },
+                                  description: {
+								                    analyzer: "index_ngram",
+								                    type: "string"
+                                  }
+                                }
+                            }
+                        }
+						}
 
             client.indices.create index: 'estates', body: {
 						  settings: {
@@ -51,26 +96,16 @@ loop do
                                         }
                             },
                             analyzer: {
-                                        index_qgram: {
-                                            type: "custom",
-                                            tokenizer: "keyword",
-                                            filter: "qgram_filter"
+                                        search_ngram: {
+                                        		type: "custom",
+                                            tokenizer: "standard",
+                                            filter: "ngram"
                                         }
                                     }
                           }
                           
                         },
                         mappings: {
-                            propertyanalysis: {
-                                properties: {
-                                  description: {
-                                    analyzer: "index_qgram",
-                                    type: "string"
-                                  
-                                  }
-                                }
-                              
-                            },
                             property: {
                               properties: {
                                     location: {
@@ -80,8 +115,9 @@ loop do
                                        points_only: true
                                     },
                                   description: {
-                                    analyzer: "index_qgram",
-                                    type: "string"
+								                    type: "string",
+								                    #index: "not_analyzed"
+								                    analyzer: "search_ngram"
                                   
                                   }
                                 }
@@ -163,13 +199,110 @@ loop do
 							puts '............Starting Indexing Process............'
 						 	timeindexing = Benchmark.measure {
 						 		system 'curl -XPOST http://localhost:9200/estates/property/_bulk --data-binary "@PropertyBasic.json"'
+						 		system 'curl -XPOST http://localhost:9200/estate/property/_bulk --data-binary "@PropertyBasic.json"'
 						 	}
             	
             	puts 'cpu time, system time, total and real elapsed time'
 						 	puts timeindexing.real
             	
-            #response = Hashie::Mash.new response
+        elsif command == 3
+        	client = Elasticsearch::Client.new log: true
+        	client.transport.reload_connections!
+
+        	Dir.chdir HOME+'/INSPIRE-SEARCH/db'
+            puts '........ Deleting Old Data from Index........'
+            system 'curl -XDELETE http://localhost:9200/estates'
+            system 'curl -XDELETE http://localhost:9200/estate'
+
+            puts '........ Setting up the Estate ElasticSearch Index Configuration......'
+
+            client.indices.create index: 'estate', body: {
+						  settings: {
+                          analysis: {
+                            filter: {
+                              qgram_filter: {
+                                            type: "ngram",
+                                            min_gram: 2,
+                                            max_gram: 3
+                                        }
+                            },
+                            analyzer: {
+                                        index_ngram: {
+                                            type: "custom",
+                                            tokenizer: "standard",
+                                            filter: "qgram_filter"
+                                        }
+                                    }
+                          }
+                          
+                        },
+                        mappings: {
+                            property: {
+                              properties: {
+                                    location: {
+                                      type: "geo_shape",
+                                      tree: "quadtree",
+                                       precision: "1km",
+                                       points_only: true
+                                    },
+                                  description: {
+								                    analyzer: "index_ngram",
+								                    type: "string"
+                                  }
+                                }
+                            }
+                        }
+						}
+
+            client.indices.create index: 'estates', body: {
+						  settings: {
+                          analysis: {
+                            filter: {
+                              qgram_filter: {
+                                            type: "ngram",
+                                            min_gram: 2,
+                                            max_gram: 8
+                                        }
+                            },
+                            analyzer: {
+                                        search_ngram: {
+                                        		type: "custom",
+                                            tokenizer: "standard",
+                                            filter: ["standard", "lowercase", "stop"]
+                                        }
+                                    }
+                          }
+                          
+                        },
+                        mappings: {
+                            property: {
+                              properties: {
+                                    location: {
+                                      type: "geo_shape",
+                                      tree: "quadtree",
+                                       precision: "1km",
+                                       points_only: true
+                                    },
+                                  description: {
+								                    type: "string",
+								                    analyzer: "search_ngram"
+                                  
+                                  }
+                                }
+                            }
+                        }
+						}
+
+
+        	puts '............Starting Indexing Process............'
+						 	timeindexing = Benchmark.measure {
+						 		system 'curl -XPOST http://localhost:9200/estates/property/_bulk --data-binary "@PropertyBasic.json"'
+						 		system 'curl -XPOST http://localhost:9200/estate/property/_bulk --data-binary "@PropertyBasic.json"'
+						 	}
+            	
+            	puts 'cpu time, system time, total and real elapsed time'
+						 	puts timeindexing.real
         end
 
-    break if command == 3
+    break if command == 4
 end

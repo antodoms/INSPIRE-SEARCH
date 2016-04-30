@@ -44,7 +44,8 @@
     <footer></footer>
 
     <script type="text/javascript">
-        var number = 0, distance = 2;
+        //var number = 0;
+        var distance = 2;
         var longitude = "144.9655705690384";
         var latitude = "-37.81778940376848";
         var finalresult;
@@ -60,11 +61,10 @@
 
             t0 = performance.now();
             distance = 2;
-            number = 0;
+           // number = 0;
             $("#output").empty();
 
             SPQ(query);
-            number = number + 10;
         });
 
 
@@ -79,6 +79,7 @@
             $("#mapoverlay").removeClass("active");
         });
 
+/*
         $(window).scroll(function() {
             if($(window).scrollTop() == $(document).height() - $(window).height()) {
                var query = $('#searchquery').val();
@@ -87,14 +88,14 @@
                number = number + 10;   
             }
         });
-
+*/
         
         function SPQ(query){
                 client.search({
                 index: 'estates',
                 type: 'property',
                 body: {
-                    from : number, size : (number+10),
+                    from : 0, size : 10,
                         query: {
                             bool: {
                                 must: {
@@ -146,7 +147,7 @@
                 index: 'estates',
                 type: 'property',
                 body: {
-                    from : number, size : (number+10),
+                    from : 0, size : 10,
                         query: {
                             bool: {
                                 must: {
@@ -201,12 +202,12 @@
                 index: 'estates',
                 type: 'property',
                 body: {
-                    from : number, size : (number+10),
+                    from : 0, size : 10,
                         query: {
                             bool: {
                                 must: {
                                     match: {
-                                      description: query
+                                      description: {query: query}
                                     }
                                   },
                                 filter: {
@@ -248,21 +249,21 @@
         }
 
         function SAPQ(query, previousresult){
+            var querry = query+"~";
             var dist = distance+"km";
             client.search({
-                index: 'estates',
+                index: 'estate',
                 type: 'property',
                 body: {
-                    from : number, size : (number+10),
+                    from : 0, size : 10,
                         query: {
                             bool: {
                                 must: {
-                                match_phrase_prefix: {
-                                  description: {
-                                    query: query,
-                                    fuzziness: "AUTO"
-                                  }
-                                }
+                                query_string: {
+                                query: querry,
+                                fuzzy_prefix_length: 3
+                              }
+                                
                               },
                                 filter: {
                                   geo_shape: {
@@ -306,18 +307,19 @@
         function SASQ(query, previousresult){
             var dist = distance+"km";
             client.search({
-                index: 'estates',
+                index: 'estate',
                 type: 'property',
                 body: {
-                    from : number, size : (number+10),
+                    from : 0, size : 10,
                         query: {
                             bool: {
                                 must: {
-                                    multi_match: {
-                                       query: query,
-                                       fields: ["description"],
-                                       fuzziness: "AUTO"
-                                                }
+                                    match: {
+                                        description: {
+                                          query: query,
+                                          fuzziness: "AUTO"
+                                        }
+                                      }
                                 },
                                 filter: {
                                   geo_shape: {
@@ -348,7 +350,7 @@
                     if(distance < 20000)
                         SPRQ(query,finalresult);
                     else
-                        $("#output").append("Your Search Query is beyond the search range of Earth! ");
+                        $("#output").append("Your Search Query is beyond the search range of Earth!");
 
                 }else{
                    showresults(finalresult); 
