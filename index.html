@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>INSPIRE SEARCH USING ELASTICSEARCH</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous">
+
+    <link rel="stylesheet" type="text/css" href="css/style.css">
+
+
+    <script type="text/javascript" src="js/jquery-1.4.3.min.js"></script>
+    <script type="text/javascript" src="js/json2.js"></script>
+    <script type="text/javascript" src="js/elasticsearch.js"></script>
+    <script type="text/javascript" src="js/elasticsearch.jquery.js"></script>
+</head>
+<body>
+
+    <header class="container center col-md-7">
+        <h1> INSPIRE SEARCH USING ELASTICSEARCH </h1>
+
+        <nav>
+            
+            <div class="input-group pull-left col-md-8">
+                <input type="text" class="form-control" id="searchquery" placeholder="Type your Search Querry">
+            </div>
+            <button id="marker" class="btn btn-default glyphicon glyphicon-record col-md-1"></button>
+            <button id="go" class="pull-right btn btn-success col-md-3">Submit</button>
+            
+            <h3 id="page-content"></h3>
+            <ul id="pagination-demo" class="pagination-sm"></ul>
+            
+        </nav>
+    </header>
+
+    <content class="container center col-md-7">
+        <div id="mapoverlay">
+            <div id="close" class="glyphicon glyphicon-remove-sign"></div>
+            <div id="map"></div>
+        </div>
+        <div id="timetaken" class="col-md-10"></div>
+        <div id="output" class="col-md-12"></div>
+    </content>
+    <footer></footer>
+
+    <script type="text/javascript">
+        var number = 0, distance = 2;
+        var longitude = "144.9655705690384";
+        var latitude = "-37.81778940376848";
+        var finalresult;
+        var t0,t1;
+
+        var client = new elasticsearch.Client({
+          host: 'localhost:9200',
+          log: 'trace'
+        });
+        $("#go").click(function(){
+            var query = $('#searchquery').val();
+
+
+            t0 = performance.now();
+            distance = 2;
+            number = 0;
+            $("#output").empty();
+
+            SPQ(query);
+            number = number + 10;
+        });
+
+
+        $("#marker").click(function(){
+            $("#mapoverlay").addClass("active");
+            google.maps.event.trigger(map, "resize");
+            initMap();
+
+        });
+
+        $("#close").click(function(){
+            $("#mapoverlay").removeClass("active");
+        });
+
+        $(window).scroll(function() {
+            if($(window).scrollTop() == $(document).height() - $(window).height()) {
+               var query = $('#searchquery').val();
+               t0 = performance.now();
+               searchquery(query); 
+               number = number + 10;   
+            }
+        });
+
+        
+        function SPQ(query){
+                client.search({
+                index: 'estates',
+                type: 'property',
+                body: {
+                    from : number, size : (number+10),
+                        query: {
+                            bool: {
+                                must: {
+                                    prefix: {
+                                      description: query
+                                    }
+                                  },
+                                filter: {
+                                  geo_shape: {
+                                    location: {
+                                          shape: {
+                                            type: "circle",
+                                            coordinates: [longitude,latitude],
+                                            radius: "1km"
+                                          },
+                                          relation: "within"
+                                    }
+                                  }
+                                }
+                            }
+                        }
+                  }
+            }).then(function (resp) {
+
+                t1 = performance.now();
+                $("#timetaken").empty();
+                $("#timetaken").append("Total "+resp.hits.total+" results completed in " +(t1 - t0) + " milliseconds.");
+                
+                finalresult = resp.hits.hits;
+                console.log("finalresult SPQ -->"+ finalresult.length);
+                if(finalresult.length < 10){
+                    console.log("SPQ SUCCESS");
+
+                    SPRQ(query,finalresult);
+                }else{
+                   showresults(finalresult); 
+                }
+                
+                
+            }, function (err) {
+                console.trace(err.message);
+            });
+
+        }
+
+        function SPRQ(query, previousresult){
+            var dist = distance+"km";
+            client.search({
+                index: 'estates',
+                type: 'property',
+                body: {
+                    from : number, size : (number+10),
+                        query: {
+                            bool: {
+                                must: {
+                                    prefix: {
+                                      description: query
+                                    }
+                                  },
+                                filter: {
+                                  geo_shape: {
+                                    location: {
+                                          shape: {
+                                            type: "circle",
+                                            coordinates: [longitude,latitude],
+                                            radius: dist
+                                          },
+                                          relation: "within"
+                                    }
+                                  }
+                                }
+                            }
+                        }
+                  }
+            }).then(function (resp) {
+
+                distance = distance * distance;
+                t1 = performance.now();
+                $("#timetaken").empty();
+                $("#timetaken").append("Total "+resp.hits.total+" results completed in " +(t1 - t0) + " milliseconds.");
+
+                finalresult = previousresult.concat(resp.hits.hits);
+
+                console.log("finalresult SPRQ -->"+ finalresult.length);
+                if(finalresult.length < 10){
+                    console.log("SPRQ SUCCESS");
+
+                    SSQ(query,finalresult);
+                }else{
+                   showresults(finalresult); 
+                }
+                
+                
+            }, function (err) {
+                console.trace(err.message);
+            });
+        }
+
+
+
+        function SSQ(query, previousresult){
+            var dist = distance+"km";
+            client.search({
+                index: 'estates',
+                type: 'property',
+                body: {
+                    from : number, size : (number+10),
+                        query: {
+                            bool: {
+                                must: {
+                                    match: {
+                                      description: query
+                                    }
+                                  },
+                                filter: {
+                                  geo_shape: {
+                                    location: {
+                                          shape: {
+                                            type: "circle",
+                                            coordinates: [longitude,latitude],
+                                            radius: dist
+                                          },
+                                          relation: "within"
+                                    }
+                                  }
+                                }
+                            }
+                        }
+                  }
+            }).then(function (resp) {
+
+                t1 = performance.now();
+                $("#timetaken").empty();
+                $("#timetaken").append("Total "+resp.hits.total+" results completed in " +(t1 - t0) + " milliseconds.");
+
+                finalresult = previousresult.concat(resp.hits.hits);
+
+                console.log("finalresult SSQ -->"+ finalresult.length);
+                if(finalresult.length < 10){
+                    console.log("SSQ SUCCESS"); 
+
+                    SAPQ(query,finalresult);
+                }else{
+                   showresults(finalresult); 
+                }
+                
+                
+            }, function (err) {
+                console.trace(err.message);
+            });
+        }
+
+        function SAPQ(query, previousresult){
+            var dist = distance+"km";
+            client.search({
+                index: 'estates',
+                type: 'property',
+                body: {
+                    from : number, size : (number+10),
+                        query: {
+                            bool: {
+                                must: {
+                                match_phrase_prefix: {
+                                  description: {
+                                    query: query,
+                                    fuzziness: "AUTO"
+                                  }
+                                }
+                              },
+                                filter: {
+                                  geo_shape: {
+                                    location: {
+                                          shape: {
+                                            type: "circle",
+                                            coordinates: [longitude,latitude],
+                                            radius: dist
+                                          },
+                                          relation: "within"
+                                    }
+                                  }
+                                }
+                            }
+                        }
+                  }
+            }).then(function (resp) {
+
+                t1 = performance.now();
+                $("#timetaken").empty();
+                $("#timetaken").append("Total "+resp.hits.total+" results completed in " +(t1 - t0) + " milliseconds.");
+
+                finalresult = previousresult.concat(resp.hits.hits);
+
+                console.log("finalresult SAPQ -->"+ finalresult.length);
+                if(finalresult.length < 10){
+                    console.log("SAPQ SUCCESS");
+
+                    SASQ(query,finalresult);
+                }else{
+                   showresults(finalresult); 
+                }
+                
+                
+            }, function (err) {
+                console.trace(err.message);
+            });
+        }
+
+
+        function SASQ(query, previousresult){
+            var dist = distance+"km";
+            client.search({
+                index: 'estates',
+                type: 'property',
+                body: {
+                    from : number, size : (number+10),
+                        query: {
+                            bool: {
+                                must: {
+                                    multi_match: {
+                                       query: query,
+                                       fields: ["description"],
+                                       fuzziness: "AUTO"
+                                                }
+                                },
+                                filter: {
+                                  geo_shape: {
+                                    location: {
+                                          shape: {
+                                            type: "circle",
+                                            coordinates: [longitude,latitude],
+                                            radius: dist
+                                          },
+                                          relation: "within"
+                                    }
+                                  }
+                                }
+                            }
+                        }
+                  }
+            }).then(function (resp) {
+
+                t1 = performance.now();
+                $("#timetaken").empty();
+                $("#timetaken").append("Total "+resp.hits.total+" results completed in " +(t1 - t0) + " milliseconds.");
+
+                finalresult = previousresult.concat(resp.hits.hits);
+
+                console.log("finalresult SASQ -->"+ finalresult.length);
+                if(finalresult.length < 10){
+                    console.log("SASQ SUCCESS");
+                    if(distance < 20000)
+                        SPRQ(query,finalresult);
+                    else
+                        $("#output").append("Your Search Query is beyond the search range of Earth! ");
+
+                }else{
+                   showresults(finalresult); 
+                }
+                
+                
+            }, function (err) {
+                console.trace(err.message);
+            });
+        }
+
+
+
+
+
+
+        function showresults(hits){
+            //$("#output").append(JSON.stringify(hits, null, '  '));
+            hits.forEach(function(result) {
+                var output = "<div class='col-md-12 result'>"+result["_source"]["description"]+"</div>";
+                $("#output").append(output);
+            });
+
+        }
+
+        
+    </script>
+
+    <script>
+    function initMap() {
+        var mapDiv = document.getElementById('map');
+        var map = new google.maps.Map(mapDiv, {
+          zoom: 12,
+          center: new google.maps.LatLng(latitude, longitude)
+        });
+
+        marker = new google.maps.Marker({position: (new google.maps.LatLng(latitude, longitude)), map: map});
+
+        // We add a DOM event here to show an alert if the DIV containing the
+        // map is clicked.
+        google.maps.event.addListener(map, 'click', function(event) {
+            console.log(event.latLng.lat()+","+event.latLng.lng());
+            marker.setPosition(new google.maps.LatLng(event.latLng.lat(),event.latLng.lng()));
+            longitude = event.latLng.lng();
+            latitude = event.latLng.lat();
+        });
+      }
+    </script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyD6c8Qm6D6Zw1UHp9hSniZmZ1jR1lnH0BU&callback=initMap"></script>
+
+</body>
+</html>

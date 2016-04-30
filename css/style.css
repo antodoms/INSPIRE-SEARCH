@@ -1,0 +1,55 @@
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+#map {
+	height: 50em;
+	width: 100%;
+	z-index: 1000;
+}
+
+
+.center {
+	margin: 0 auto;
+	margin-left: 20%;
+	margin-right: 20%;
+}
+
+#mapoverlay {
+    position: fixed;
+    width: 100%;
+    top: 0;
+    left: 0;
+    z-index: 1000;
+    display: none;
+}
+
+#mapoverlay.active {
+	display: block;
+}
+
+#close {
+    position: fixed;
+    z-index: 2000;
+    font-size: 27px;
+    float: right;
+    right: 5px;
+    top: 5px;
+}
+
+.result {
+    text-align: justify;
+    margin-top: 30px;
+}
+
+#timetaken {
+    margin-top: 15px;
+    color: gray;
+    font-size: 12px;
+    background: black;
+    padding: 17px;
+    width: 100%;
+}
