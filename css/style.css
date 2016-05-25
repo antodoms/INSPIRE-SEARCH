@@ -6,9 +6,8 @@ html, body {
 }
 
 #map {
-	height: 50em;
-	width: 100%;
-	z-index: 1000;
+    height: 50em;
+    width: 100%;
 }
 
 
@@ -23,21 +22,8 @@ html, body {
     width: 100%;
     top: 0;
     left: 0;
-    z-index: 1000;
-    display: none;
-}
-
-#mapoverlay.active {
-	display: block;
-}
-
-#close {
-    position: fixed;
-    z-index: 2000;
-    font-size: 27px;
-    float: right;
-    right: 5px;
-    top: 5px;
+    /*z-index: 1000;
+    display: none;*/
 }
 
 .result {
@@ -53,3 +39,23 @@ html, body {
     padding: 17px;
     width: 100%;
 }
+
+#go {
+    z-index: 1000;
+}
+
+#legend {
+    background: white;
+    padding: 10px;
+  }
+.labels {
+   color: red;
+   background-color: white;
+   font-family: "Lucida Grande", "Arial", sans-serif;
+   font-size: 10px;
+   font-weight: bold;
+   text-align: center;
+   width: 60px;     
+   border: 2px solid black;
+   white-space: nowrap;
+ }

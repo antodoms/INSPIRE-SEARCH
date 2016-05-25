@@ -16,7 +16,7 @@
 </head>
 <body>
 
-    <header class="container center col-md-7">
+    <header class="container center col-md-7" style="z-index:999;">
         <h1> INSPIRE SEARCH USING ELASTICSEARCH </h1>
 
         <nav>
@@ -24,7 +24,7 @@
             <div class="input-group pull-left col-md-8">
                 <input type="text" class="form-control" id="searchquery" placeholder="Type your Search Querry">
             </div>
-            <button id="marker" class="btn btn-default glyphicon glyphicon-record col-md-1"></button>
+            <ul id="def" class="dropdown-menu" style="display:none;width: 64%;margin-left: 15px;"></ul>
             <button id="go" class="pull-right btn btn-success col-md-3">Submit</button>
             
             <h3 id="page-content"></h3>
@@ -32,24 +32,55 @@
             
         </nav>
     </header>
-
     <content class="container center col-md-7">
         <div id="mapoverlay">
-            <div id="close" class="glyphicon glyphicon-remove-sign"></div>
             <div id="map"></div>
         </div>
         <div id="timetaken" class="col-md-10"></div>
         <div id="output" class="col-md-12"></div>
     </content>
-    <footer></footer>
+    <footer>
+        <div id="footer"></div>
+    </footer>
 
     <script type="text/javascript">
-        //var number = 0;
-        var distance = 2;
+        //var number = 0
+
+
+        var distance = 1;
         var longitude = "144.9655705690384";
         var latitude = "-37.81778940376848";
         var finalresult;
         var t0,t1;
+        var resultdictionary = {};
+        var mapcircle =[];
+
+        var iconBase = 'http://maps.google.com/mapfiles/ms/icons/';
+
+        var icons = {
+          SPQ: {
+            icon: iconBase + 'lightblue.png'
+          },
+          SPRQ: {
+            icon: iconBase + 'green.png'
+          },
+          SSQ: {
+            icon: iconBase + 'orange.png'
+          },
+          SAPQ: {
+            icon: iconBase + 'pink.png'
+          },
+          SASQ: {
+            icon: iconBase + 'red.png'
+          },
+        };
+
+        var mapDiv = document.getElementById('map');
+        var legend = document.getElementById('legend');
+        var map;
+
+        var iteration;
+        var iterationcolor= ["#FF0000","#00FF00", "#0000FF", "blue", "green"];
 
         var client = new elasticsearch.Client({
           host: 'localhost:9200',
@@ -57,38 +88,70 @@
         });
         $("#go").click(function(){
             var query = $('#searchquery').val();
+            document.getElementById("def").style.display="none";
+            
+            google.maps.Map.prototype.clearMarkers = function() {
+                for(var i=0; i < this.markers.length; i++){
+                    this.markers[i].setMap(null);
+                }
+                this.markers = new Array();
+            };
 
-
+            mapcircle=[];
+            maprefresh();
             t0 = performance.now();
             distance = 2;
-           // number = 0;
-            $("#output").empty();
+            iteration = 0;
+            resultdictionary = {};
 
             SPQ(query);
+            loadlegends();
         });
 
+        var appendingstring ="";
+        var appendingdata ="";
 
-        $("#marker").click(function(){
-            $("#mapoverlay").addClass("active");
-            google.maps.event.trigger(map, "resize");
-            initMap();
 
-        });
+        $("#searchquery").keyup(function() {
 
-        $("#close").click(function(){
-            $("#mapoverlay").removeClass("active");
-        });
-
-/*
-        $(window).scroll(function() {
-            if($(window).scrollTop() == $(document).height() - $(window).height()) {
-               var query = $('#searchquery').val();
-               t0 = performance.now();
-               searchquery(query); 
-               number = number + 10;   
+        appendingdata ='{ "search-suggest": { "text": "'+document.getElementById("searchquery").value+'", "completion": { "field": "suggest", "fuzzy": { "fuzziness": 10 } } } }';
+        $.ajax({
+            url: "http://localhost:9200/estate/_suggest",
+            beforeSend: function(xhr) { 
+              xhr.setRequestHeader("Authorization", "Basic " + btoa("username:password")); 
+            },
+            type: 'POST',
+            dataType: 'json',
+            contentType: 'application/json',
+            processData: false,
+            data: appendingdata,
+            success: function (data) {
+              appendingstring ="";
+              for(var i=0 ; i < data["search-suggest"].length; i++){
+                for(var j=0; j < data["search-suggest"][i]["options"].length; j++){
+                    appendingstring += '<li><a id="Java" onclick="mydef(\''+data["search-suggest"][i]["options"][j]["text"]+'\')" >'+data["search-suggest"][i]["options"][j]["text"]+'</a></li>';
+                    //console.log(data["search-suggest"][i]["options"][j]["text"]);
+                }
+              }
+            },
+            error: function(){
+              alert("Cannot get data");
             }
         });
-*/
+        
+        if(appendingstring ==""){ 
+             document.getElementById("def").style.display="none";
+        } else{
+            document.getElementById("def").innerHTML=appendingstring;
+            document.getElementById("def").style.display="block";
+        }
+        });
+
+
+        function mydef(data){
+            document.getElementById("searchquery").value = data;
+        }
+
         
         function SPQ(query){
                 client.search({
@@ -109,7 +172,7 @@
                                           shape: {
                                             type: "circle",
                                             coordinates: [longitude,latitude],
-                                            radius: "1km"
+                                            radius: "0.5km"
                                           },
                                           relation: "within"
                                     }
@@ -124,14 +187,26 @@
                 $("#timetaken").empty();
                 $("#timetaken").append("Total "+resp.hits.total+" results completed in " +(t1 - t0) + " milliseconds.");
                 
-                finalresult = resp.hits.hits;
-                console.log("finalresult SPQ -->"+ finalresult.length);
-                if(finalresult.length < 10){
-                    console.log("SPQ SUCCESS");
+                mapcircle[iteration] = 500;
+                iteration++;
 
-                    SPRQ(query,finalresult);
+                resp.hits.hits.forEach(function(result) {
+
+                    if(resultdictionary[result["_source"]["id"]] == null){
+                        resultdictionary[result["_source"]["id"]] = {};
+                        resultdictionary[result["_source"]["id"]]["query"]="SPQ";
+                        resultdictionary[result["_source"]["id"]]["data"]= result["_source"]["description"];
+                        resultdictionary[result["_source"]["id"]]["location"] = result["_source"]["location"];
+                    }
+                });
+
+                if(Object.keys(resultdictionary).length < 10){
+                    console.log("SPQ SUCCESS");
+                    SPRQ(query,resultdictionary);
+                    //prefixSelectivity(query,resp.hits.total);
                 }else{
-                   showresults(finalresult); 
+                   showresults(resultdictionary); 
+                   SPRQ(query,resultdictionary);
                 }
                 
                 
@@ -171,26 +246,38 @@
                         }
                   }
             }).then(function (resp) {
+                distance = distance * 2;
 
-                distance = distance * distance;
                 t1 = performance.now();
                 $("#timetaken").empty();
                 $("#timetaken").append("Total "+resp.hits.total+" results completed in " +(t1 - t0) + " milliseconds.");
 
-                finalresult = previousresult.concat(resp.hits.hits);
+                mapcircle[iteration] = distance * 1000;
+                iteration++;
 
-                console.log("finalresult SPRQ -->"+ finalresult.length);
-                if(finalresult.length < 10){
+                resp.hits.hits.forEach(function(result) {
+
+                    if(resultdictionary[result["_source"]["id"]] == null){
+                        resultdictionary[result["_source"]["id"]] = {};
+                        resultdictionary[result["_source"]["id"]]["query"]="SPRQ";
+                        resultdictionary[result["_source"]["id"]]["data"]= result["_source"]["description"];
+                        resultdictionary[result["_source"]["id"]]["location"] = result["_source"]["location"];
+                 
+                    }
+                });
+    
+                if(Object.keys(resultdictionary).length < 10){
                     console.log("SPRQ SUCCESS");
-
-                    SSQ(query,finalresult);
+                    //substringSelectivity(query,resp.hits.total);
+                    SSQ(query,resultdictionary);
                 }else{
-                   showresults(finalresult); 
+                   showresults(resultdictionary); 
                 }
                 
                 
             }, function (err) {
                 console.trace(err.message);
+                SSQ(query,resultdictionary);
             });
         }
 
@@ -226,25 +313,31 @@
                         }
                   }
             }).then(function (resp) {
-
                 t1 = performance.now();
                 $("#timetaken").empty();
                 $("#timetaken").append("Total "+resp.hits.total+" results completed in " +(t1 - t0) + " milliseconds.");
 
-                finalresult = previousresult.concat(resp.hits.hits);
+                resp.hits.hits.forEach(function(result) {
 
-                console.log("finalresult SSQ -->"+ finalresult.length);
-                if(finalresult.length < 10){
+                    if(resultdictionary[result["_source"]["id"]] == null){
+                        resultdictionary[result["_source"]["id"]] = {};
+                        resultdictionary[result["_source"]["id"]]["query"]="SSQ";
+                        resultdictionary[result["_source"]["id"]]["data"]= result["_source"]["description"];
+                        resultdictionary[result["_source"]["id"]]["location"] = result["_source"]["location"];
+                    }
+                });
+
+                if(Object.keys(resultdictionary).length < 10){
                     console.log("SSQ SUCCESS"); 
-
-                    SAPQ(query,finalresult);
+                    SAPQ(query,resultdictionary);
                 }else{
-                   showresults(finalresult); 
+                   showresults(resultdictionary); 
                 }
                 
                 
             }, function (err) {
                 console.trace(err.message);
+                SAPQ(query,resultdictionary);
             });
         }
 
@@ -281,25 +374,31 @@
                         }
                   }
             }).then(function (resp) {
-
                 t1 = performance.now();
                 $("#timetaken").empty();
                 $("#timetaken").append("Total "+resp.hits.total+" results completed in " +(t1 - t0) + " milliseconds.");
 
-                finalresult = previousresult.concat(resp.hits.hits);
+                resp.hits.hits.forEach(function(result) {
 
-                console.log("finalresult SAPQ -->"+ finalresult.length);
-                if(finalresult.length < 10){
+                    if(resultdictionary[result["_source"]["id"]] == null){
+                        resultdictionary[result["_source"]["id"]] = {};
+                        resultdictionary[result["_source"]["id"]]["query"]="SAPQ";
+                        resultdictionary[result["_source"]["id"]]["data"]= result["_source"]["description"];
+                        resultdictionary[result["_source"]["id"]]["location"] = result["_source"]["location"];
+                    }
+                });
+
+                if(Object.keys(resultdictionary).length < 10){
                     console.log("SAPQ SUCCESS");
-
-                    SASQ(query,finalresult);
+                    SASQ(query,resultdictionary);
                 }else{
-                   showresults(finalresult); 
+                   showresults(resultdictionary); 
                 }
                 
                 
             }, function (err) {
                 console.trace(err.message);
+                SASQ(query,resultdictionary);
             });
         }
 
@@ -317,7 +416,7 @@
                                     match: {
                                         description: {
                                           query: query,
-                                          fuzziness: "AUTO"
+                                          fuzziness: "2"
                                         }
                                       }
                                 },
@@ -342,47 +441,154 @@
                 $("#timetaken").empty();
                 $("#timetaken").append("Total "+resp.hits.total+" results completed in " +(t1 - t0) + " milliseconds.");
 
-                finalresult = previousresult.concat(resp.hits.hits);
+                resp.hits.hits.forEach(function(result) {
+                    console.log(result["_source"]["description"]);
+                    if(resultdictionary[result["_source"]["id"]] == null){
+                        resultdictionary[result["_source"]["id"]] = {};
+                        resultdictionary[result["_source"]["id"]]["query"]="SASQ";
+                        resultdictionary[result["_source"]["id"]]["data"]= result["_source"]["description"];
+                        resultdictionary[result["_source"]["id"]]["location"] = result["_source"]["location"];
+                    }
+                });
 
-                console.log("finalresult SASQ -->"+ finalresult.length);
-                if(finalresult.length < 10){
+                if(Object.keys(resultdictionary).length < 10){
                     console.log("SASQ SUCCESS");
                     if(distance < 20000)
-                        SPRQ(query,finalresult);
+                        SPRQ(query,resultdictionary);
                     else
                         $("#output").append("Your Search Query is beyond the search range of Earth!");
 
                 }else{
-                   showresults(finalresult); 
+                   showresults(resultdictionary); 
                 }
                 
                 
             }, function (err) {
                 console.trace(err.message);
+                SPRQ(query,resultdictionary);
             });
         }
 
 
+        function prefixSelectivity(query,resultcount){
+            console.log("prefixselecyovity--->"+resultcount);
+         var data ='{ "query" : { "bool": {"must": { "prefix": { "description": ""}},"filter": { "geo_shape": {"location": {"shape": { "type": "circle", "coordinates": ['+ longitude +','+ latitude+'], "radius": "'+distance+'km" },"relation": "within"  }}}}}}';
 
+        $.ajax({
+            url: "http://localhost:9200/estates/property/_count",
+            beforeSend: function(xhr) { 
+              xhr.setRequestHeader("Authorization", "Basic " + btoa("username:password")); 
+            },
+            type: 'POST',
+            dataType: 'json',
+            contentType: 'application/json',
+            processData: false,
+            data: data,
+            success: function (res) {
+                var value = parseFloat(resultcount)/parseFloat(res["count"]);
+                if(value > 0.001){
+                SPRQ(query,resultdictionary);
+                }else{
+                substringSelectivity(query,parseFloat(resultcount));
+                }
+            },
+            error: function(){
+              alert("Cannot get data");
+            }
+        });
+
+
+        }
+
+        function substringSelectivity(query,resultcount){
+            console.log("prefixselecyovity--->"+resultcount);
+         var data ='{ "query" : { "bool": {"must": { "prefix": { "description": ""}},"filter": { "geo_shape": {"location": {"shape": { "type": "circle", "coordinates": ['+ longitude +','+ latitude+'], "radius": "'+distance+'km" },"relation": "within"  }}}}}}';
+
+        $.ajax({
+            url: "http://localhost:9200/estates/property/_count",
+            beforeSend: function(xhr) { 
+              xhr.setRequestHeader("Authorization", "Basic " + btoa("username:password")); 
+            },
+            type: 'POST',
+            dataType: 'json',
+            contentType: 'application/json',
+            processData: false,
+            data: data,
+            success: function (res) {
+                var value = parseFloat(resultcount)/parseFloat(res["count"]);
+                if(value > 0.001){
+                    console.log("subscring selectivity--->"+value);
+                SSQ(query,resultdictionary);
+                }else{
+                SAPQ(query,resultdictionary);
+                }
+            },
+            error: function(){
+              alert("Cannot get data");
+            }
+        });
+
+
+        }
 
 
 
         function showresults(hits){
-            //$("#output").append(JSON.stringify(hits, null, '  '));
-            hits.forEach(function(result) {
-                var output = "<div class='col-md-12 result'>"+result["_source"]["description"]+"</div>";
-                $("#output").append(output);
-            });
+
+            map.setZoom(14 - iteration);
+
+            for(var i=0; i< mapcircle.length ; i++){
+
+                var cityCircle = new google.maps.Circle({
+                  strokeColor: "F0F0F0",
+                  strokeOpacity: 0.8,
+                  strokeWeight: 2,
+                  fillColor: iterationcolor[i],
+                  fillOpacity: 0.35,
+                  map: map,
+                  center: {lat: parseFloat(latitude), lng: parseFloat(longitude)},
+                  radius: mapcircle[i]
+                });
+
+
+            }
+            var markers=[];
+            var contents = [];
+            var infowindows = [];
+            var i=0;
+
+            for (var key in resultdictionary) {
+
+                        var lng = resultdictionary[key]["location"]["coordinates"][0];
+                        var lat = resultdictionary[key]["location"]["coordinates"][1];
+                        //console.log(resultdictionary[key]["data"]);
+
+                        markers[i] = new google.maps.Marker({
+                            position: (new google.maps.LatLng(lat, lng)),
+                            map: map,
+                            icon: icons[resultdictionary[key]["query"]].icon,
+                            title: resultdictionary[key]["data"]
+                        });
+
+                        markers[i].index = i;
+
+                        contents[i] ='<div><strong>' + resultdictionary[key]["data"] + '</strong><br>' +'Node ID: ' + key + '<br></div>';
+
+                        infowindows[i] = new google.maps.InfoWindow({
+                            content: contents[i]
+                          });
+
+                        google.maps.event.addListener(markers[i], 'click', function() {
+                            infowindows[this.index].open(map,markers[this.index]);
+                            map.panTo(markers[this.index].getPosition());
+                        }); 
+                        i++;
+            }
 
         }
 
-        
-    </script>
-
-    <script>
     function initMap() {
-        var mapDiv = document.getElementById('map');
-        var map = new google.maps.Map(mapDiv, {
+        map = new google.maps.Map(mapDiv, {
           zoom: 12,
           center: new google.maps.LatLng(latitude, longitude)
         });
@@ -397,9 +603,47 @@
             longitude = event.latLng.lng();
             latitude = event.latLng.lat();
         });
+
+        loadlegends();
+
+      }
+
+      function maprefresh(){
+        map = new google.maps.Map(mapDiv, {
+          zoom: 10,
+          center: new google.maps.LatLng(latitude, longitude)
+        });
+
+        marker = new google.maps.Marker({position: (new google.maps.LatLng(latitude, longitude)), map: map});
+
+        // We add a DOM event here to show an alert if the DIV containing the
+        // map is clicked.
+        google.maps.event.addListener(map, 'click', function(event) {
+            console.log(event.latLng.lat()+","+event.latLng.lng());
+            marker.setPosition(new google.maps.LatLng(event.latLng.lat(),event.latLng.lng()));
+            longitude = event.latLng.lng();
+            latitude = event.latLng.lat();
+        });
+
+      }
+
+      function loadlegends(){
+        var legenddata = '<div id="legend"><h4>Legends</h4><p>----------------------</p></div>';
+        var footer = document.getElementById("footer");
+        footer.innerHTML = legenddata;
+
+        map.controls[google.maps.ControlPosition.RIGHT_BOTTOM].push(document.getElementById('legend'));
+        legend = document.getElementById("legend");
+        for (var icon in icons) {
+              var name = ""+icon;
+              var icon = icons[""+icon].icon;
+              var div = document.createElement('div');
+              div.innerHTML = '<img src="' + icon + '"> ' + name;
+              legend.appendChild(div);
+        }
       }
     </script>
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyD6c8Qm6D6Zw1UHp9hSniZmZ1jR1lnH0BU&callback=initMap"></script>
+    <script src="https://maps.googleapis.com/maps/api/js?api=AIzaSyB2NjMwaWelBEsVHWZ4NQxVVFqQZY2AVxU&callback=initMap"></script>
 
 </body>
 </html>

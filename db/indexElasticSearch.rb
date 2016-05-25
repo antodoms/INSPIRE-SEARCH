@@ -36,94 +36,6 @@ loop do
         		client.transport.reload_connections!
 
         		Dir.chdir HOME+'/INSPIRE-SEARCH/db'
-            puts '........ Deleting Old Data from Index........'
-            system 'curl -XDELETE http://localhost:9200/estates'
-            system 'curl -XDELETE http://localhost:9200/estate'
-
-            puts '........ Setting up the Estate ElasticSearch Index Configuration......'
-
-            client.indices.create index: 'estate', body: {
-						  settings: {
-                          analysis: {
-                            filter: {
-                              qgram_filter: {
-                                            type: "ngram",
-                                            min_gram: 2,
-                                            max_gram: 3
-                                        }
-                            },
-                            analyzer: {
-                                        index_ngram: {
-                                            type: "custom",
-                                            tokenizer: "standard",
-                                            filter: "qgram_filter"
-                                        },
-                                        search_ngram: {
-                                        		type: "custom",
-                                            tokenizer: "standard",
-                                            filter: "qgram_filter"
-                                        }
-                                    }
-                          }
-                          
-                        },
-                        mappings: {
-                            property: {
-                              properties: {
-                                    location: {
-                                      type: "geo_shape",
-                                      tree: "quadtree",
-                                       precision: "1km",
-                                       points_only: true
-                                    },
-                                  description: {
-								                    analyzer: "index_ngram",
-								                    type: "string"
-                                  }
-                                }
-                            }
-                        }
-						}
-
-            client.indices.create index: 'estates', body: {
-						  settings: {
-                          analysis: {
-                            filter: {
-                              qgram_filter: {
-                                            type: "ngram",
-                                            min_gram: 2,
-                                            max_gram: 3
-                                        }
-                            },
-                            analyzer: {
-                                        search_ngram: {
-                                        		type: "custom",
-                                            tokenizer: "standard",
-                                            filter: "ngram"
-                                        }
-                                    }
-                          }
-                          
-                        },
-                        mappings: {
-                            property: {
-                              properties: {
-                                    location: {
-                                      type: "geo_shape",
-                                      tree: "quadtree",
-                                       precision: "1km",
-                                       points_only: true
-                                    },
-                                  description: {
-								                    type: "string",
-								                    #index: "not_analyzed"
-								                    analyzer: "search_ngram"
-                                  
-                                  }
-                                }
-                            }
-                        }
-						}
 
 						puts '       '
 						puts '........ Extracting Property Address Data......'
@@ -178,32 +90,47 @@ loop do
 											final_data[:id] = data[:proid].to_s
 											#final_data[:price] = data[:price].to_s
 											
-											cleaned_array = data[:des_content].to_s.downcase.gsub(/[^a-z0-9\s]/i, '').split.uniq.reject {|term| excess_words.include? term}
+											#cleaned_array = data[:des_content].to_s.downcase.gsub(/[^a-z0-9\s]/i, '').split.uniq.reject {|term| excess_words.include? term}
+                      cleaned_array = data_hash[id]["address"].to_s.downcase.gsub(/[^a-z\s]/i, '').split.uniq
+                      cleaned_string = ""
+                      cleaned_array_new = []
+                      cleaned_array.each_with_index do |temp,i|
+                        if i==0
+                          cleaned_string = temp
+                        else 
+                          cleaned_string = cleaned_string + " " + temp
+                          cleaned_array_new.push(cleaned_string)
+                        end
+                      end
 
+                      cleaned_array_new.each do |arr|
+                        cleaned_array.push(arr)
+                      end
+                      
+                      suggest_dic = {}
+                      payload_dic = {}
+                      suggest_dic[:input] = cleaned_array
+                      suggest_dic[:output] = data_hash[id]["address"].to_s.downcase 
+                      payload_dic[:id] = id
+                      suggest_dic[:payload] = payload_dic
+                      suggest_dic[:weight] = 34
 											#final_data[:address] = data_hash[id]["address"].to_s
 											final_data[:location] = data_hash[id]["location"]
-											final_data[:description] = "#{cleaned_array.join(" ")} #{data_hash[id]["address"].to_s} #{data[:protype].to_s}"
-											#final_data[:propertytype] = data[:protype].to_s
+                      final_data[:suggest] = suggest_dic
 
+											#final_data[:description] = "#{cleaned_array.join(" ")} #{data_hash[id]["address"].to_s} #{data[:protype].to_s}"
+                      final_data[:description] = "#{data_hash[id]["address"].to_s} #{data[:protype].to_s}"
+											#final_data[:propertytype] = data[:protype].to_s
+                      #binding.pry
 											file.puts idindex.to_json
 											file.puts final_data.to_json
 										end
 									end
-
 								end
 							}
 
 							puts 'cpu time, system time, total and real elapsed time'
 						 	puts time.real
-						
-							puts '............Starting Indexing Process............'
-						 	timeindexing = Benchmark.measure {
-						 		system 'curl -XPOST http://localhost:9200/estates/property/_bulk --data-binary "@PropertyBasic.json"'
-						 		system 'curl -XPOST http://localhost:9200/estate/property/_bulk --data-binary "@PropertyBasic.json"'
-						 	}
-            	
-            	puts 'cpu time, system time, total and real elapsed time'
-						 	puts timeindexing.real
             	
         elsif command == 3
         	client = Elasticsearch::Client.new log: true
@@ -248,7 +175,12 @@ loop do
                                   description: {
 								                    analyzer: "index_ngram",
 								                    type: "string"
-                                  }
+                                  },
+                                  suggest: { type: "completion",
+                                      analyzer: "simple",
+                                      search_analyzer: "simple",
+                                      payloads: true
+                                    }
                                 }
                             }
                         }
@@ -280,18 +212,24 @@ loop do
                                     location: {
                                       type: "geo_shape",
                                       tree: "quadtree",
-                                       precision: "1km",
+                                       precision: "1m",
                                        points_only: true
                                     },
                                   description: {
 								                    type: "string",
 								                    analyzer: "search_ngram"
                                   
-                                  }
+                                  },
+                                  suggest: { type: "completion",
+                                      analyzer: "simple",
+                                      search_analyzer: "simple",
+                                      payloads: true
+                                    }
                                 }
                             }
                         }
 						}
+
 
 
         	puts '............Starting Indexing Process............'
