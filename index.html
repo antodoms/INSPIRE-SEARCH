@@ -246,7 +246,7 @@
                         }
                   }
             }).then(function (resp) {
-                distance = distance * 2;
+                distance = distance *  distance;
 
                 t1 = performance.now();
                 $("#timetaken").empty();
@@ -344,35 +344,43 @@
         function SAPQ(query, previousresult){
             var querry = query+"~";
             var dist = distance+"km";
+
             client.search({
                 index: 'estate',
                 type: 'property',
                 body: {
                     from : 0, size : 10,
                         query: {
-                            bool: {
-                                must: {
-                                query_string: {
-                                query: querry,
-                                fuzzy_prefix_length: 3
-                              }
-                                
-                              },
-                                filter: {
-                                  geo_shape: {
-                                    location: {
-                                          shape: {
-                                            type: "circle",
-                                            coordinates: [longitude,latitude],
-                                            radius: dist
-                                          },
-                                          relation: "within"
+
+                            bool:{
+                                must:[
+                                  {
+                                    match_phrase_prefix: {
+                                      description: {
+                                        query: query,
+                                        fuzziness: 3
+                                      }
                                     }
                                   }
-                                }
-                            }
+                                  ],
+                                  filter:{
+                                    geo_shape: {
+                                      location: {
+                                        shape: {
+                                          type: "circle",
+                                          coordinates: [longitude,latitude],
+                                          radius: dist
+                                          
+                                        },
+                                        relation: "within"
+                                      }
+                                    }
+                                  }
+                                
+                              }
+
                         }
-                  }
+                    }
             }).then(function (resp) {
                 t1 = performance.now();
                 $("#timetaken").empty();
@@ -416,7 +424,7 @@
                                     match: {
                                         description: {
                                           query: query,
-                                          fuzziness: "2"
+                                          fuzziness: "1"
                                         }
                                       }
                                 },
